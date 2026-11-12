@@ -1,43 +1,60 @@
 # estyxq Hub
 
-A NextUI menu with Overview, Playground, ESP, and Settings tabs. The ESP module handles skeletons and rings for R6 and R15 characters.
+A NextUI hub with Overview, Playground, ESP, and Settings tabs.
 
-## Load from GitHub
+| File | Role |
+| --- | --- |
+| `loader.luau` | Executor entry point. Fetches `main.luau` and supplies the source URLs. |
+| `main.luau` | Hub branding, window setup, tabs, settings, and feature controls. |
+| `menu.luau` | Your hosted NextUI library source, with the branded startup splash disabled by default. |
+| `esp.luau` | R6/R15 skeleton and ring ESP module, fetched when you enable ESP. |
 
-Upload `menu.luau` and `esp.luau` to the same folder in a public GitHub repository. In `menu.luau`, set:
+## Run from GitHub
+
+Upload all four `.luau` files together. The loader is configured for:
 
 ```lua
-ScriptBaseURL = "https://raw.githubusercontent.com/USERNAME/REPOSITORY/main/",
+ScriptBaseURL = "https://raw.githubusercontent.com/esteban-cz/estyxqHub/main/",
 ```
 
-Replace `USERNAME` and `REPOSITORY` with your values. If the scripts are in a subfolder, include it after `main/`. Use the files' exact names and capitalization.
-
-Then run only this launcher, with your own menu URL:
+Run this in the executor:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/USERNAME/REPOSITORY/main/menu.luau"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/esteban-cz/estyxqHub/main/loader.luau"))()
 ```
 
-The menu downloads NextUI from its official source. Enabling ESP downloads `esp.luau` from `ScriptBaseURL`, creates its controller, and applies the menu's settings. Disabling ESP releases its drawings and listeners. The controller is reused when you enable it again; a new menu session fetches the configured ESP source again.
+The loader fetches `main.luau`. Main loads your hosted `menu.luau` UI library, builds the hub, and downloads `esp.luau` when you enable ESP. Launching the loader is enough.
 
-For an ESP file hosted elsewhere, set `ESPSourceURL` to its full raw URL. That override takes priority over `ScriptBaseURL`.
+If you change the repository, branch, or folder, update `ScriptBaseURL` in the loader. `MainFile`, `LibraryFile`, and `ESPFile` accept paths beneath that base URL. The loader passes those URLs directly to main.
 
-To copy a raw URL, open a file on GitHub and click **Raw**. It should display Lua source text. A `github.com/.../blob/...` page is the file viewer rather than the raw source.
+A file's GitHub **Raw** button shows its source URL. This loader uses public URLs without authentication. A branch such as `main` follows your uploaded changes; a tag or commit selects a specific version.
 
-This simple loader uses public URLs without authentication. Private repositories need authenticated access. A branch such as `main` follows your uploaded changes; using a tag or commit in place of `main` selects a specific version.
+## Customize the hub
 
-## Run the two files separately
+Edit `main.luau` for branding, versions, theme, tabs, and feature settings. Edit `menu.luau` for changes to the UI library itself. Its original MIT license and attribution remain at the top of the file.
 
-With both URL settings empty, execute `esp.luau` first to register its module, then execute `menu.luau` and enable ESP in its tab.
+The library's startup splash is opt-in through `CreateWindow({ Intro = true })`. Main explicitly sets `Intro = false`, so the hub opens without the splash or its icon-wait delay. Icons still load asynchronously. The library retains its upstream icon assets and NextNotify dependency.
+
+Main can run directly using its own `CONFIG.ScriptBaseURL`. `LibraryURL` and `ESPSourceURL` are optional full-URL overrides; blank or missing values fall back to `menu.luau` and `esp.luau` under the base URL. With no ESP URL, execute `esp.luau` first to register its module before enabling it in the hub.
+
+Main also accepts URL arguments:
+
+```lua
+local hub = loadstring(game:HttpGet("YOUR_RAW_MAIN_URL"))({
+    ScriptBaseURL = "YOUR_RAW_FOLDER_URL/",
+    LibraryURL = "YOUR_RAW_UI_LIBRARY_URL",
+    ESPSourceURL = "YOUR_RAW_ESP_URL",
+})
+```
 
 ## Menu behavior
 
 - **RightShift** shows or hides the hub. Settings can change the shortcut.
 - Minimizing shows the draggable **estyxq Hub** pill on desktop and touch devices.
 - Minimizing keeps ESP active.
-- Closing, unloading, or reloading the menu stops its ESP and cleans up the interface.
+- Closing, unloading, or reloading the hub stops its ESP and cleans up the interface.
 - Appearance and ESP values are session-only.
-
-The branding, versions, theme, and source URLs are together in `CONFIG` at the top of `menu.luau`.
+- Repeated loader runs replace the previous hub; an older download cannot open a second menu after a newer run.
+- Failed main downloads leave an existing hub running.
 
 NextUI documentation: https://diser.me/nextui/
