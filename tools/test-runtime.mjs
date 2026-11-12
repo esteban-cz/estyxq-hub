@@ -4,9 +4,10 @@ import path from 'node:path';
 import { root, luau, run } from './luau.mjs';
 const files = ['main.luau','loader.luau','dev-loader.luau','menu.luau','catalog.luau','core/runtime.luau',
     'shared/misc-[Misc]/anti-afk-[Anti-AFK].luau',
+    'shared/misc-[Misc]/anti-kick-[Anti-Kick].luau',
     'urban-reloaded-[84448037861644]/combat-[Combat]/silent-aim-[Silent Aim].luau',
     'urban-reloaded-[84448037861644]/visual-[Visuals]/esp-[ESP].luau'];
-const sources = Object.fromEntries(await Promise.all(files.map(async file => [file, (await readFile(path.join(root,file),'utf8')).replaceAll('\r\n','\n')])));
+const sources = Object.fromEntries(await Promise.all(files.map(async file => [file, (await readFile(path.join(root,'src',file),'utf8')).replaceAll('\r\n','\n')])));
 function quote(value) {
     let equals = '=';
     while (value.includes(']' + equals + ']')) equals += '=';

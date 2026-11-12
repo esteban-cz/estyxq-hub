@@ -2,7 +2,7 @@ local launchOptions = ... or {}
 assert(type(launchOptions) == "table", "Loader options must be a table.")
 assert(launchOptions.ReadSource == nil or type(launchOptions.ReadSource) == "function", "ReadSource must be a function.")
 local CONFIG = {
-    ScriptBaseURL = "https://raw.githubusercontent.com/esteban-cz/estyxq-hub/main/",
+    ScriptBaseURL = "https://raw.githubusercontent.com/esteban-cz/estyxq-hub/main/src/",
     MainFile = "main.luau",
     LibraryFile = "menu.luau",
     CatalogFile = "catalog.luau" -- Generated locally with npm run build.

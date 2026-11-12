@@ -2,7 +2,7 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
 const bracketName = /^(.*)-\[([^\]]+)\]$/;
 const reservedTabs = new Set(['Overview','Settings']);
 const readable = value => value.replace(/[-_]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim();

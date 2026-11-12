@@ -21,9 +21,10 @@ async function fixture(t, files) {
 }
 
 test('catalog is deterministic and the committed output is current', async () => {
-    const first = await buildCatalog(root);
-    assert.equal(await buildCatalog(root), first);
-    assert.equal(await readFile(path.join(root, 'catalog.luau'), 'utf8'), first);
+    const sourceRoot = path.join(root, 'src');
+    const first = await buildCatalog(sourceRoot);
+    assert.equal(await buildCatalog(sourceRoot), first);
+    assert.equal(await readFile(path.join(sourceRoot, 'catalog.luau'), 'utf8'), first);
 });
 
 test('discovers game/tab/section metadata and escapes valid Luau without executing standalone downloads', async t => {

@@ -5,27 +5,29 @@ One loader, one interface, reusable shared sections, and separate game features.
 ## Project layout
 
 ```text
-loader.luau                         # Public GitHub entry point
-main.luau                           # Shared window, settings, section mounting, lifecycle
-menu.luau                           # NextUI library fork
-catalog.luau                        # Generated game and shared-section catalog
-core/runtime.luau                   # Cleanup scopes and section error boundaries
-shared/
-  misc-[Misc]/
-    tab.json
-    anti-afk-[Anti-AFK].luau          # Controller + shared Misc section
-urban-reloaded-[84448037861644]/
-  game.json
-  combat-[Combat]/
-    tab.json
-    silent-aim-[Silent Aim].luau      # Controller + Urban Reload Combat section
-  visual-[Visuals]/
-    tab.json
-    esp-[ESP].luau                    # Controller + Urban Reload Visuals section
-unused-scripts/                     # Preserved sources; never discovered or loaded
-  esp-base.luau
-  urban-reload-silent-aim.original.luau
-dev-loader.luau                     # Local executor-workspace entry point
+src/
+  loader.luau                       # Public GitHub entry point
+  main.luau                         # Shared window, settings, section mounting, lifecycle
+  menu.luau                         # NextUI library fork
+  catalog.luau                      # Generated game and shared-section catalog
+  dev-loader.luau                   # Local executor-workspace entry point
+  core/runtime.luau                 # Cleanup scopes and section error boundaries
+  shared/
+    misc-[Misc]/
+      tab.json
+      anti-afk-[Anti-AFK].luau      # Controller + shared Misc section
+  urban-reloaded-[84448037861644]/
+    game.json
+    combat-[Combat]/
+      tab.json
+      silent-aim-[Silent Aim].luau  # Controller + Urban Reload Combat section
+    visual-[Visuals]/
+      tab.json
+      esp-[ESP].luau                # Controller + Urban Reload Visuals section
+  unused-scripts/                   # Preserved Luau sources; never loaded
+README.md                           # Project documentation stays at the root
+tests/                              # Tests stay at the root
+tools/                              # Build and validation tools stay at the root
 ```
 
 `main.luau` has no built-in ESP, Anti-AFK, or game targeting code. Shared and game sections use the same loading, retry, and cleanup API. The current menu has Overview, shared Misc, Settings, and Combat/Visuals when Urban Reload matches. All features start disabled.
@@ -35,10 +37,10 @@ dev-loader.luau                     # Local executor-workspace entry point
 Upload the runtime files and keep their folder structure. Run:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/esteban-cz/estyxq-hub/main/loader.luau"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/esteban-cz/estyxq-hub/main/src/loader.luau"))()
 ```
 
-Set `ScriptBaseURL` in `loader.luau` if the repository, branch, or source folder changes. The loader reads `catalog.luau`, selects the game, and passes its metadata and the shared tabs to main. A success message appears in the executor console.
+Set `ScriptBaseURL` in `src/loader.luau` if the repository, branch, or source folder changes. The loader reads `src/catalog.luau`, selects the game, and passes its metadata and the shared tabs to main. A success message appears in the executor console.
 
 GitHub raw URLs serve pushed files. Uncommitted local edits are available through the local loader below.
 
@@ -50,10 +52,10 @@ For an executor with `readfile` support:
 2. Run:
 
 ```lua
-loadstring(readfile("estyxq-hub/dev-loader.luau"))()
+loadstring(readfile("estyxq-hub/src/dev-loader.luau"))()
 ```
 
-`dev-loader.luau` reads the current project files through the same loader and application code. Update the copied files and run it again after each edit. Change `ROOT` inside the local loader if your folder has another name. Local mode changes hub source loading; the UI library's upstream icons/notification dependencies can still use HTTP.
+`src/dev-loader.luau` reads the current project files through the same loader and application code. Update the copied files and run it again after each edit. Change `ROOT` inside the local loader if your folder has another name. Local mode changes hub source loading; the UI library's upstream icons/notification dependencies can still use HTTP.
 
 For the first Urban Reload smoke test:
 
@@ -82,13 +84,13 @@ Head rings stand upright in a camera-facing plane; ground rings remain horizonta
 
 ESP needs Drawing.Line. If Drawing.Text is missing, it reports the limitation once and keeps the supported visuals running. Disabling, section retry, reload, or unload releases all owned drawings and listeners. Ring detail and update rate can be lowered independently. Actual executor rendering still needs a live check.
 
-The unchanged universal ESP reference remains under `unused-scripts/esp-base.luau`. The active game section no longer registers the old universal ESP globals.
+The unchanged universal ESP reference remains under `src/unused-scripts/esp-base.luau`. The active game section no longer registers the old universal ESP globals.
 
 The original ESP's reported editor errors were on Luau compound assignments and `continue`, which compile in Luau but can be flagged by a standard Lua parser. The active ESP uses ordinary assignments and branches instead.
 
 ## Adding games, shared tabs, and sections
 
-A root folder named `readable-name-[PlaceId]` identifies a game. Add `game.json`:
+A folder under `src/` named `readable-name-[PlaceId]` identifies a game. Add `game.json`:
 
 ```json
 {
@@ -104,9 +106,9 @@ The folder's bracketed number is a PlaceId. Optional `PlaceIds` adds exact place
 
 Within a game folder, `readable-name-[Tab title]/` becomes a tab. Inside it, `readable-name-[Section title].luau` becomes a section. Optional `tab.json` sets its icon, for example `{"Icon":"swords"}`.
 
-Use the same tab/section naming under `shared/` for tools available in every game. Overview and Settings are reserved titles; a game's tab titles must also avoid shared tab titles. Unmatched helper files and everything under `unused-scripts/` are ignored by discovery.
+Use the same tab/section naming under `src/shared/` for tools available in every game. Overview and Settings are reserved titles; a game's tab titles must also avoid shared tab titles. Unmatched helper files and everything under `src/unused-scripts/` are ignored by discovery.
 
-After adding, renaming, or changing metadata, run `npm run build` and include the updated `catalog.luau` with the sources. Implementation-only edits at an existing section path do not require a rebuild.
+After adding, renaming, or changing metadata, run `npm run build` and include the updated `src/catalog.luau` with the sources. Implementation-only edits at an existing section path do not require a rebuild.
 
 ## Writing a section
 
@@ -166,7 +168,7 @@ npm run check
 
 Setup downloads the pinned official [Luau 0.746 CLI](https://github.com/luau-lang/luau/releases/tag/0.746), verifies the archive checksum, and stores ignored binaries under `.tools/luau/`. Other platforms can supply `LUAU_BIN` and `LUAU_COMPILE_BIN`.
 
-- `npm run build`: regenerate `catalog.luau`.
+- `npm run build`: regenerate `src/catalog.luau`.
 - `npm test`: catalog validation, controller tests, section lifetimes, reloads, and local/remote loading.
 - `npm run check`: ensure the catalog is current, compile active Luau sources, and run tests. Archives are excluded.
 

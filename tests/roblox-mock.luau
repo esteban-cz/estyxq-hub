@@ -237,7 +237,7 @@ local function nextUI()
         registry.NextUI = nil
     end
     function library:CreateWindow(options)
-        assert(options.Title and options.SubTitle and options.Size and options.Intro == false)
+        assert(options.Title and options.SubTitle and options.Size and options.Intro == true)
         assert(options.Author == nil and options.OpenButton == nil and options.Transparent == nil, "Legacy window options")
         local gui = uiInstance("ScreenGui")
         gui.AbsoluteSize = { X = 1000, Y = 720 }

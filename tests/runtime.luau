@@ -235,7 +235,7 @@ print("PASS: constructor callbacks fail safely and late returned cleanup runs im
 
 -- Exercise the actual added NextUI section destructor rather than only its test double.
 do
-    local body = assert(sources["menu.luau"]:match("function sec:Destroy%(%)\n(.-)\n\t\t\tend"))
+    local _, body = assert(sources["menu.luau"]:match("([ \t]*)function sec:Destroy%(%)\n(.-)\n%1end"))
     local destroy = assert(realCompile("return function(self, tab, card, collapseKey, NextUI)\n" .. body .. "\nend"))()
     local removed = false
     local card = {Destroy=function() removed=true end}
@@ -255,7 +255,7 @@ print("PASS: actual NextUI card destructor removes search registration and prese
 
 -- The actual Elements connection helper releases native control input listeners on card destruction.
 do
-    local helper = assert(sources["menu.luau"]:match("local function Elements%(self, getParent%)\n(.-)\n\tlocal function hgt"))
+    local helper = assert(sources["menu.luau"]:match("local function Elements%(self, getParent%)\n(.-)\n[ \t]*local function hgt"))
     local connect = assert(realCompile("return function(getParent)\n" .. helper .. "\nreturn connect\nend"))()
     local owner = {Destroying=signal()}
     local event = signal()
@@ -448,8 +448,8 @@ do
     local remoteRequests = #requests
     local reads = {}
     environment.readfile = function(filename)
-        assert(filename:sub(1,10) == "estyxq-hub/")
-        local file=filename:sub(11)
+        assert(filename:sub(1,15) == "estyxq-hub/src/")
+        local file=filename:sub(16)
         table.insert(reads,file)
         if file=="menu.luau" then return "MOCK_NEXTUI" end
         return assert(sources[file], "Local source missing: " .. file)

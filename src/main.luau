@@ -9,7 +9,7 @@ local CONFIG = {
     MenuVersion = "2.2.0",
     LibraryURL = "", -- Optional override. Defaults to ScriptBaseURL .. "menu.luau".
 
-    ScriptBaseURL = "https://raw.githubusercontent.com/esteban-cz/estyxq-hub/main/",
+    ScriptBaseURL = "https://raw.githubusercontent.com/esteban-cz/estyxq-hub/main/src/",
     Theme = "Amethyst",
     Transparent = true,
     Anonymous = false,

@@ -41,7 +41,7 @@ local function C(r, g, b)
     return Color3.fromRGB(r, g, b)
 end
 
-local INTRO_ICON = "https://diser.me/nextui/next.png"
+local INTRO_ICON = "https://raw.githubusercontent.com/esteban-cz/estyxq-hub/refs/heads/main/assets/icon.png"
 local INTRO_TITLE = "estyxq Hub"
 local INTRO_SUBTITLE = "Made by estyxq"
 
