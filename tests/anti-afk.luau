@@ -1,0 +1,47 @@
+-- Shared controller regressions.
+local idleEvents = 0
+local externalIdle = localPlayer.Idled:Connect(function() idleEvents += 1 end)
+local anti = execute(afkSource)
+local afk = anti.new({ Enabled = true, IdleThreshold = 60, PulseInterval = 15 })
+assert(#afk._connections == 4 and virtualDowns == 0)
+advance(30)
+UserInputService.InputBegan:Fire()
+advance(59)
+assert(virtualDowns == 0)
+advance(1)
+assert(virtualDowns == 1 and virtualHeld and afk.PulseCount == 1)
+UserInputService.InputChanged:Fire({})
+advance(0.2)
+assert(virtualUps == 1 and not virtualHeld)
+advance(15)
+assert(virtualDowns == 2 and virtualHeld)
+afk:SetEnabled(false)
+assert(not virtualHeld and #afk._connections == 0 and externalIdle.Connected)
+localPlayer.Idled:Fire(600)
+advance(30)
+assert(virtualDowns == 2 and idleEvents == 1)
+afk:UpdateSettings({ IdleThreshold = 9999, PulseInterval = 1 })
+assert(afk:GetSettings().IdleThreshold == 900 and afk:GetSettings().PulseInterval == 15)
+afk:SetEnabled(true)
+afk:Pulse()
+afk:Destroy()
+assert(not virtualHeld and afk.Destroyed and #afk._connections == 0)
+local afkErrors = 0
+failDown = true
+afk = anti.new({ Enabled = true }, function() afkErrors += 1 end)
+afk:Pulse()
+flushTasks()
+assert(not afk.Enabled and not virtualHeld and #afk._connections == 0 and afkErrors == 1)
+failDown = false
+afk:Destroy()
+afk = anti.new({ Enabled = true }, function() afkErrors += 1 end)
+afk:Pulse()
+failUpCount = 1
+advance(0.2)
+assert(not afk.Enabled and not virtualHeld and afk._heldCamera == nil and #afk._connections == 0)
+afk:Destroy()
+externalIdle:Disconnect()
+assert(allConnections() == 0)
+print("PASS: Anti-AFK idle timing, real activity, paired release, disable/unload, existing listeners, and input failures")
+
+

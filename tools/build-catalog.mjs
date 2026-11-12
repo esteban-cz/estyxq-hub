@@ -1,0 +1,93 @@
+// Generates the catalog from shared and per-game tab/section folders.
+import { readdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const bracketName = /^(.*)-\[([^\]]+)\]$/;
+const reservedTabs = new Set(['Overview','Settings']);
+const readable = value => value.replace(/[-_]+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()).trim();
+const quote = value => JSON.stringify(value).replace(/\\u([0-9a-f]{4})/gi,'\\u{$1}');
+function lua(value, level=0) {
+    if (typeof value === 'string') return quote(value);
+    if (typeof value === 'number') return String(value);
+    const pad='    '.repeat(level), child=pad+'    ';
+    const entries=Array.isArray(value) ? value.map(item=>lua(item,level+1))
+        : Object.entries(value).map(([key,item])=>`${key} = ${lua(item,level+1)}`);
+    return entries.length ? `{\n${child}${entries.join(`,\n${child}`)},\n${pad}}` : '{}';
+}
+async function entries(folder) {
+    try { return (await readdir(folder,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name)); }
+    catch(error) { if(error.code==='ENOENT') return []; throw error; }
+}
+async function json(file) {
+    try {
+        const value=JSON.parse((await readFile(file,'utf8')).replace(/^\uFEFF/,''));
+        if(!value || typeof value!=='object' || Array.isArray(value)) throw Error('Expected a JSON object');
+        return value;
+    } catch(error) { if(error.code==='ENOENT') return {}; throw Error(`${file}: ${error.message}`); }
+}
+function text(value, fallback, label) {
+    if(value===undefined) return fallback;
+    if(typeof value!=='string' || !value.trim()) throw Error(`${label} must be a nonempty string`);
+    return value.trim();
+}
+function ids(value,label) {
+    if(value===undefined) return [];
+    if(!Array.isArray(value) || value.some(id=>!Number.isSafeInteger(id) || id<=0)) throw Error(`${label} must contain positive integer IDs`);
+    return [...new Set(value)];
+}
+async function tabs(root, relative, reserved=reservedTabs) {
+    const result=[], names=new Set();
+    for(const entry of await entries(path.join(root,relative))) {
+        const match=entry.name.match(bracketName);
+        if(!entry.isDirectory() || !match) continue;
+        const title=match[2].trim();
+        if(!title || reserved.has(title) || names.has(title)) throw Error(`Invalid or duplicate tab title: ${title}`);
+        names.add(title);
+        const folder=path.posix.join(relative,entry.name), options=await json(path.join(root,folder,'tab.json'));
+        const tab={Title:title,Icon:text(options.Icon,'layout',`${title} Icon`),Sections:[]}, sections=new Set();
+        for(const file of await entries(path.join(root,folder))) {
+            if(!file.isFile() || !file.name.endsWith('.luau')) continue;
+            const section=file.name.slice(0,-5).match(bracketName);
+            if(!section) continue;
+            const name=section[2].trim();
+            if(!name || sections.has(name)) throw Error(`Invalid or duplicate section: ${name}`);
+            sections.add(name);
+            tab.Sections.push({Title:name,File:path.posix.join(folder,file.name)});
+        }
+        if(tab.Sections.length) result.push(tab);
+    }
+    return result;
+}
+export async function buildCatalog(root=defaultRoot) {
+    const shared=await tabs(root,'shared');
+    const gameReserved=new Set([...reservedTabs,...shared.map(tab=>tab.Title)]);
+    const games=[], seenIds=new Set(), seenPlaces=new Set(), seenExperiences=new Set();
+    for(const entry of await entries(root)) {
+        const match=entry.name.match(bracketName);
+        if(!entry.isDirectory() || !match || !/^\d+$/.test(match[2])) continue;
+        const placeId=Number(match[2]);
+        if(!Number.isSafeInteger(placeId) || placeId<=0) throw Error(`Invalid place ID in ${entry.name}`);
+        const metadata=await json(path.join(root,entry.name,'game.json'));
+        const id=text(metadata.Id,match[1].toLowerCase().replace(/[^a-z0-9_-]+/g,'-'),`${entry.name} Id`);
+        if(!/^[a-z0-9_-]+$/.test(id) || seenIds.has(id)) throw Error(`Invalid or duplicate game Id: ${id}`);
+        seenIds.add(id);
+        const places=[...new Set([placeId,...ids(metadata.PlaceIds,`${id} PlaceIds`)])];
+        const experiences=ids(metadata.GameIds,`${id} GameIds`);
+        for(const [values,seen,label] of [[places,seenPlaces,'PlaceId'],[experiences,seenExperiences,'GameId']]) {
+            for(const value of values) { if(seen.has(value)) throw Error(`Duplicate ${label}: ${value}`); seen.add(value); }
+        }
+        games.push({Id:id,Name:text(metadata.Name,readable(match[1]),`${id} Name`),
+            Version:text(metadata.Version,'0.1.0',`${id} Version`),Subtitle:text(metadata.Subtitle,`${readable(match[1])} tools.`,`${id} Subtitle`),
+            PlaceIds:places,GameIds:experiences,Tabs:await tabs(root,entry.name,gameReserved)});
+    }
+    return `-- Generated by npm run build. Edit folders and JSON metadata, then rebuild.\nreturn ${lua({SchemaVersion:1,SharedTabs:shared,Games:games})}\n`;
+}
+if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
+    const output=await buildCatalog(), target=path.join(defaultRoot,'catalog.luau');
+    if(process.argv.includes('--check')) {
+        const current=await readFile(target,'utf8').catch(error=>{if(error.code==='ENOENT')return '';throw error;});
+        if(current!==output) throw Error('catalog.luau is stale. Run npm run build and include the result.');
+        console.log('Catalog is current.');
+    } else { await writeFile(target,output); console.log('Built catalog.luau.'); }
+}

@@ -6,8 +6,8 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local environment = (type(getgenv) == "function" and getgenv()) or shared
-local MODULE_KEY = "estyxqHub.ESPModule"
-local INSTANCE_KEY = "estyxqHub.ESP"
+local MODULE_KEY = "estyxq-hub.ESPModule"
+local INSTANCE_KEY = "estyxq-hub.ESP"
 
 local ESP = { Version = "2.1.0" }
 local Controller = {}

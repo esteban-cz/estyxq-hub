@@ -1,0 +1,14 @@
+{
+  "name": "estyxq-hub",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "setup:luau": "node tools/setup-luau.mjs",
+    "build": "node tools/build-catalog.mjs",
+    "test": "node --test tests/*.test.mjs && node tools/test-runtime.mjs",
+    "check": "node tools/build-catalog.mjs --check && node tools/check-luau.mjs && npm test"
+  }
+}

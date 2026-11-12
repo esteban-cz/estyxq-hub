@@ -1,60 +1,175 @@
 # estyxq Hub
 
-A NextUI hub with Overview, Playground, ESP, and Settings tabs.
+One loader, one interface, reusable shared sections, and separate game features. Runtime files are plain Luau; Node is only used by contributors to build the catalog and run checks.
 
-| File | Role |
-| --- | --- |
-| `loader.luau` | Executor entry point. Fetches `main.luau` and supplies the source URLs. |
-| `main.luau` | Hub branding, window setup, tabs, settings, and feature controls. |
-| `menu.luau` | Your hosted NextUI library source, with the branded startup splash disabled by default. |
-| `esp.luau` | R6/R15 skeleton and ring ESP module, fetched when you enable ESP. |
+## Project layout
+
+```text
+loader.luau                         # Public GitHub entry point
+main.luau                           # Shared window, settings, section mounting, lifecycle
+menu.luau                           # NextUI library fork
+catalog.luau                        # Generated game and shared-section catalog
+core/runtime.luau                   # Cleanup scopes and section error boundaries
+shared/
+  misc-[Misc]/
+    tab.json
+    anti-afk-[Anti-AFK].luau          # Controller + shared Misc section
+urban-reloaded-[84448037861644]/
+  game.json
+  combat-[Combat]/
+    tab.json
+    silent-aim-[Silent Aim].luau      # Controller + Urban Reload Combat section
+  visual-[Visuals]/
+    tab.json
+    esp-[ESP].luau                    # Controller + Urban Reload Visuals section
+unused-scripts/                     # Preserved sources; never discovered or loaded
+  esp-base.luau
+  urban-reload-silent-aim.original.luau
+dev-loader.luau                     # Local executor-workspace entry point
+```
+
+`main.luau` has no built-in ESP, Anti-AFK, or game targeting code. Shared and game sections use the same loading, retry, and cleanup API. The current menu has Overview, shared Misc, Settings, and Combat/Visuals when Urban Reload matches. All features start disabled.
 
 ## Run from GitHub
 
-Upload all four `.luau` files together. The loader is configured for:
+Upload the runtime files and keep their folder structure. Run:
 
 ```lua
-ScriptBaseURL = "https://raw.githubusercontent.com/esteban-cz/estyxqHub/main/",
+loadstring(game:HttpGet("https://raw.githubusercontent.com/esteban-cz/estyxq-hub/main/loader.luau"))()
 ```
 
-Run this in the executor:
+Set `ScriptBaseURL` in `loader.luau` if the repository, branch, or source folder changes. The loader reads `catalog.luau`, selects the game, and passes its metadata and the shared tabs to main. A success message appears in the executor console.
+
+GitHub raw URLs serve pushed files. Uncommitted local edits are available through the local loader below.
+
+## Test local edits before committing
+
+For an executor with `readfile` support:
+
+1. Copy the project into the executor's `workspace/estyxq-hub/` folder, preserving the subfolders. Tests, tools, `.git`, and `.tools` are not needed there.
+2. Run:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/esteban-cz/estyxqHub/main/loader.luau"))()
+loadstring(readfile("estyxq-hub/dev-loader.luau"))()
 ```
 
-The loader fetches `main.luau`. Main loads your hosted `menu.luau` UI library, builds the hub, and downloads `esp.luau` when you enable ESP. Launching the loader is enough.
+`dev-loader.luau` reads the current project files through the same loader and application code. Update the copied files and run it again after each edit. Change `ROOT` inside the local loader if your folder has another name. Local mode changes hub source loading; the UI library's upstream icons/notification dependencies can still use HTTP.
 
-If you change the repository, branch, or folder, update `ScriptBaseURL` in the loader. `MainFile`, `LibraryFile`, and `ESPFile` accept paths beneath that base URL. The loader passes those URLs directly to main.
+For the first Urban Reload smoke test:
 
-A file's GitHub **Raw** button shows its source URL. This loader uses public URLs without authentication. A branch such as `main` follows your uploaded changes; a tag or commit selects a specific version.
+1. Open the place `84448037861644` and launch the local loader.
+2. Confirm **Combat / Silent Aim**, **Visuals / ESP**, **Misc / Anti-AFK**, and **Settings** appear. Confirm features are off.
+3. Enable Silent Aim and verify the FOV circle; adjust its radius, color, and visibility. Check targeting with the game's weapons.
+4. Check team filtering, wall filtering, aim part, distance, and hit chance against the actual game. In Visuals, enable ESP and check upright head rings, flat ground rings, names, distance, and health bars. Try the presets, optional boxes, and a respawn.
+5. Enable Anti-AFK and use **Test keepalive**. Minimize and reopen the hub; enabled features should stay active.
+6. Rerun the loader, retry a section, and unload the hub. Circles, targeting, and owned listeners should stop without duplicate windows.
 
-## Customize the hub
+The old standalone Silent Aim file had no unload method. If it was already executed in this session, rejoin before testing the replacement.
 
-Edit `main.luau` for branding, versions, theme, tabs, and feature settings. Edit `menu.luau` for changes to the UI library itself. Its original MIT license and attribution remain at the top of the file.
+## Feature behavior and limits
 
-The library's startup splash is opt-in through `CreateWindow({ Intro = true })`. Main explicitly sets `Intro = false`, so the hub opens without the splash or its icon-wait delay. Icons still load asynchronously. The library retains its upstream icon assets and NextNotify dependency.
+Urban Reload's section keeps the original camera-ray interception approach, with a cached target selection loop, dynamic camera handling, R6/R15 aim parts, team and wall checks, distance limits, hit chance, and an optional FOV circle. Camera ray origin/depth and direction length are preserved. Actual weapon compatibility must be tested in the game; a weapon implementation that does not use these camera methods will not be affected.
 
-Main can run directly using its own `CONFIG.ScriptBaseURL`. `LibraryURL` and `ESPSourceURL` are optional full-URL overrides; blank or missing values fall back to `menu.luau` and `esp.luau` under the base URL. With no ESP URL, execute `esp.luau` first to register its module before enabling it in the hub.
+Metamethod hooks require executor support. The circle also requires `Drawing.Circle`; missing circle support leaves targeting available and shows a notification. An executor without the required hooks gets a clear enable error.
 
-Main also accepts URL arguments:
+The dispatcher installs on first enable and is reused across disables, retries, and reloads. Cleanup clears its active controller, disconnects its update listener, and removes its drawing. One inert pass-through dispatcher remains in the session, so cleanup does not overwrite another script's later metamethod hook. Rejoining resets the session entirely.
+
+Anti-AFK owns its input/idle/heartbeat listeners and releases paired simulated input when disabled or unloaded. It does not disable other scripts' idle listeners. Keepalive input depends on VirtualUser support in the executor.
+
+Urban Reload has an owned **Visuals / ESP** section. It starts disabled, uses a 600-stud range and 30 Hz updates, and offers Balanced, Minimal, and Detailed presets. Visibility, Style, Rings, and Performance inline pages contain the controls. Names, distance, health bars, corner boxes, team colors, visibility checks, and outlines are independently configurable.
+
+Head rings stand upright in a camera-facing plane; ground rings remain horizontal. Automatic offsets follow the character's feet and head size, with manual controls available. Labels and boxes use model bounds, and health bars read Humanoid health/max health. Geometry occlusion is optional. This uses normal player/character/team data; it does not assume unverified Urban Reload attributes for armor, crews, or downed states.
+
+ESP needs Drawing.Line. If Drawing.Text is missing, it reports the limitation once and keeps the supported visuals running. Disabling, section retry, reload, or unload releases all owned drawings and listeners. Ring detail and update rate can be lowered independently. Actual executor rendering still needs a live check.
+
+The unchanged universal ESP reference remains under `unused-scripts/esp-base.luau`. The active game section no longer registers the old universal ESP globals.
+
+The original ESP's reported editor errors were on Luau compound assignments and `continue`, which compile in Luau but can be flagged by a standard Lua parser. The active ESP uses ordinary assignments and branches instead.
+
+## Adding games, shared tabs, and sections
+
+A root folder named `readable-name-[PlaceId]` identifies a game. Add `game.json`:
+
+```json
+{
+  "Id": "urban-reload",
+  "Name": "Urban Reload",
+  "Version": "0.2.0",
+  "Subtitle": "Urban Reload tools.",
+  "GameIds": [10769552054]
+}
+```
+
+The folder's bracketed number is a PlaceId. Optional `PlaceIds` adds exact places, and `GameIds` registers an entire experience. Exact place matches take priority. `Name`, `Version`, and `Subtitle` set the game script identity; `Id` separates its settings folder. Runtime settings are currently session-only.
+
+Within a game folder, `readable-name-[Tab title]/` becomes a tab. Inside it, `readable-name-[Section title].luau` becomes a section. Optional `tab.json` sets its icon, for example `{"Icon":"swords"}`.
+
+Use the same tab/section naming under `shared/` for tools available in every game. Overview and Settings are reserved titles; a game's tab titles must also avoid shared tab titles. Unmatched helper files and everything under `unused-scripts/` are ignored by discovery.
+
+After adding, renaming, or changing metadata, run `npm run build` and include the updated `catalog.luau` with the sources. Implementation-only edits at an existing section path do not require a rebuild.
+
+## Writing a section
+
+Each section returns a definition with `Mount(context)`. File loading should only define the module. Create controllers and other resources inside Mount, and register cleanup as soon as each resource exists.
 
 ```lua
-local hub = loadstring(game:HttpGet("YOUR_RAW_MAIN_URL"))({
-    ScriptBaseURL = "YOUR_RAW_FOLDER_URL/",
-    LibraryURL = "YOUR_RAW_UI_LIBRARY_URL",
-    ESPSourceURL = "YOUR_RAW_ESP_URL",
-})
+return {
+    Icon = "sliders-horizontal",
+    Side = "Full", -- Optional: Left, Right, or Full
+    Mount = function(context)
+        local controller = Feature.new()
+        context.AddCleanup(function() controller:Destroy() end)
+        context.Controls.Enabled = context.Section:AddToggle({
+            Title = "Enable feature", Style = "Switch", Default = false,
+            Callback = function(enabled)
+                controller:SetEnabled(enabled)
+                context.State.Enabled = enabled
+            end,
+        })
+    end,
+}
 ```
 
-## Menu behavior
+| Context field/function | Purpose |
+| --- | --- |
+| `Section` | Add controls with guarded callbacks. Group controls with `AddTitle` and `AddDivider`; `AddSection` belongs to the tab, not this card. |
+| `State`, `Controls` | Fresh tables for this attempt's settings and UI handles. |
+| `Area`, `Source` | `Game` or `Shared`, and this section's repository path. |
+| `Game`, `PlaceId`, `GameId` | Selected game metadata and current Roblox IDs. `Game` can be nil in the universal hub. |
+| `GameState`, `SharedState` | Shared state within the current hub session. |
+| `Connect(signal, callback)` | Own a guarded event connection. |
+| `Spawn`, `Defer`, `Delay` | Own and cancel background tasks. Delay takes seconds before the callback. |
+| `Guard(callback)` | Guard a callback given to an external API. |
+| `AddCleanup(callback)` | Register cleanup in reverse order; one error does not prevent other cleanups. |
+| `LoadModule(path)` | Load a helper from the same GitHub/local source, with ownership checks after yielding. |
+| `IsActive()` | Check whether this attempt is still current after yielding. |
+| `Notify(title, content, kind)` | Show a hub notification. |
+| `Hub`, `Window`, `Tab`, `Library`, `Scope` | Advanced access to the hub, native UI, and lifecycle. |
 
-- **RightShift** shows or hides the hub. Settings can change the shortcut.
-- Minimizing shows the draggable **estyxq Hub** pill on desktop and touch devices.
-- Minimizing keeps ESP active.
-- Closing, unloading, or reloading the hub stops its ESP and cleans up the interface.
-- Appearance and ESP values are session-only.
-- Repeated loader runs replace the previous hub; an older download cannot open a second menu after a newer run.
-- Failed main downloads leave an existing hub running.
+Mount may return a cleanup function, register several, or do both. Cleanup should finish without yielding. Independent hooks, listeners, or tasks must be explicitly registered; the framework cannot infer their lifetime. Native calls through Tab, Window, or Library do not automatically gain section ownership.
 
-NextUI documentation: https://diser.me/nextui/
+Section download, compile, evaluation, mount, and guarded callback errors affect that section. Its resources are released, the console shows details, and its card offers Retry. A retry refetches the source and creates fresh State/Controls. Other sections keep working.
+
+Inspect `Hub.Sections[tabTitle][sectionTitle]` for Status, Error, Attempts, Retry(), and Destroy(). State and controls live under `Hub.State.Game` / `Hub.Controls.Game` or `Hub.State.Shared` / `Hub.Controls.Shared`.
+
+RightShift hides/shows the window; minimizing leaves a draggable reopen pill. Closing, unloading, or reloading releases owned features. Required UI/runtime files download and compile before the previous hub retires; execution errors in the new UI library can still fail after replacement.
+
+## Contributor checks
+
+Node.js 22+; no npm dependencies. On Windows/Linux x64:
+
+```sh
+npm run setup:luau
+npm run build
+npm run check
+```
+
+Setup downloads the pinned official [Luau 0.746 CLI](https://github.com/luau-lang/luau/releases/tag/0.746), verifies the archive checksum, and stores ignored binaries under `.tools/luau/`. Other platforms can supply `LUAU_BIN` and `LUAU_COMPILE_BIN`.
+
+- `npm run build`: regenerate `catalog.luau`.
+- `npm test`: catalog validation, controller tests, section lifetimes, reloads, and local/remote loading.
+- `npm run check`: ensure the catalog is current, compile active Luau sources, and run tests. Archives are excluded.
+
+GitHub Actions runs these checks on pushes and pull requests. Runtime tests use Roblox/NextUI doubles; they do not verify live rendering, weapon compatibility, or executor behavior.
+
+The NextUI fork retains its MIT header. [NextUI documentation](https://diser.me/nextui/).
