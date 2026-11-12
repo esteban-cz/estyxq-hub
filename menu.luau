@@ -11,8 +11,7 @@ local CONFIG = {
     MenuVersion = "2.0.0",
     LibraryURL = "https://diser.me/nextui/source.lua",
 
-    ScriptBaseURL = "", -- Example: https://raw.githubusercontent.com/USERNAME/REPOSITORY/main/
-    ESPSourceURL = "", -- Optional override if ESP lives elsewhere. Otherwise uses ScriptBaseURL .. esp.luau.
+    ScriptBaseURL = "https://raw.githubusercontent.com/esteban-cz/estyxqHub/main/",
     Theme = "Amethyst",
     Transparent = true,
     Anonymous = false,
