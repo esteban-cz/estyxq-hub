@@ -37,6 +37,19 @@ function vectorMeta.__add(a, b) return vec(a.X + b.X, a.Y + b.Y, a.Z + b.Z) end
 function vectorMeta.__sub(a, b) return vec(a.X - b.X, a.Y - b.Y, a.Z - b.Z) end
 function vectorMeta.__div(a,b) return vec(a.X/b,a.Y/b,a.Z/b) end
 function vectorMeta.__mul(a, b) return vec(a.X * b, a.Y * b, a.Z * b) end
+function vectorMeta:Lerp(other,t) return self+(other-self)*t end
+local frameMeta={}
+local function frame(position,right,up,look)
+    return setmetatable({Position=position or vec(0,0,0),RightVector=right or vec(1,0,0),UpVector=up or vec(0,1,0),LookVector=look or vec(0,0,1),Kind="CFrame"},frameMeta)
+end
+frameMeta.__index=function(self,key)
+    if key=="Rotation" then return frame(vec(0,0,0),self.RightVector,self.UpVector,self.LookVector) end
+    return frameMeta[key]
+end
+function frameMeta:PointToWorldSpace(point) return self.Position+self.RightVector*point.X+self.UpVector*point.Y+self.LookVector*point.Z end
+function frameMeta:Lerp(other,t) return frame(self.Position:Lerp(other.Position,t),self.RightVector:Lerp(other.RightVector,t),self.UpVector:Lerp(other.UpVector,t),self.LookVector:Lerp(other.LookVector,t)) end
+frameMeta.__add=function(a,b) return frame(a.Position+b,a.RightVector,a.UpVector,a.LookVector) end
+frameMeta.__mul=function(a,b) return frame(a:PointToWorldSpace(b.Position),b.RightVector,b.UpVector,b.LookVector) end
 local colorMeta = {}
 colorMeta.__index = colorMeta
 local function color(r, g, b) return setmetatable({ R = r, G = g, B = b, Kind = "Color3" }, colorMeta) end
@@ -46,14 +59,28 @@ local function descendant(self,ancestor)
     while type(parent)=="table" do if parent==ancestor then return true end; parent=parent.Parent end
     return false
 end
-local function part(name, position)
-    return { Name = name, Position = position or vec(0, 0, 20), Size = vec(2,2,1), IsA = function(_, class) return class == "BasePart" end, IsDescendantOf=descendant }
+local function part(name,position)
+    local object={Name=name,Size=vec(2,2,1),CanCollide=true,AssemblyLinearVelocity=vec(0,0,0),AssemblyAngularVelocity=vec(0,0,0),_frame=frame(position or vec(0,0,20)),IsA=function(_,class) return class=="BasePart" end,IsDescendantOf=descendant}
+    return setmetatable(object,{
+        __index=function(self,key) if key=="Position" then return self._frame.Position elseif key=="CFrame" then return self._frame end end,
+        __newindex=function(self,key,value)
+            if key=="Position" then self._frame=frame(value,self._frame.RightVector,self._frame.UpVector,self._frame.LookVector)
+            elseif key=="CFrame" then self._frame=value else rawset(self,key,value) end
+        end,
+    })
 end
 local function humanoid(rig)
-    return { Name = "Humanoid", RigType = rig, Health = 100, MaxHealth = 100, HipHeight = rig == 6 and 0 or 2, IsA = function(_, class) return class == "Humanoid" end }
+    local object={Name="Humanoid",RigType=rig,Health=100,MaxHealth=100,HipHeight=rig==6 and 0 or 2,PlatformStand=false,AutoRotate=true,MoveDirection=vec(0,0,0),FloorMaterial="Ground",_state="Running",IsA=function(_,class) return class=="Humanoid" end}
+    function object:GetState() return self._state end
+    function object:ChangeState(state)
+        self._state=state
+        if state=="Jumping" or state=="Freefall" then self.FloorMaterial="Air" end
+        if state=="Landed" or state=="Running" then self.FloorMaterial="Ground" end
+    end
+    return object
 end
 local function character(rig, withHumanoid)
-    local model = { Parent = true, Children = {}, ChildAdded = signal(), ChildRemoved = signal() }
+    local model = { Parent = true, Children = {}, ChildAdded = signal(), ChildRemoved = signal(), DescendantAdded=signal(), DescendantRemoving=signal() }
     function model:FindFirstChildOfClass(class)
         for _, child in ipairs(self.Children) do if child:IsA(class) then return child end end
     end
@@ -69,14 +96,22 @@ local function character(rig, withHumanoid)
         local center=(lo+hi)/2
         return {Position=center, PointToWorldSpace=function(_,offset) return center+offset end},hi-lo
     end
+    function model:GetDescendants()
+        local all={}
+        for _,child in ipairs(self.Children) do
+            table.insert(all,child)
+            if child.GetDescendants then for _,part in ipairs(child:GetDescendants()) do table.insert(all,part) end end
+        end
+        return all
+    end
     function model:GetChildren() return table.clone(self.Children) end
     function model:FindFirstChild(name)
         for _, child in ipairs(self.Children) do if child.Name == name then return child end end
     end
-    function model:Add(child) child.Parent = self; table.insert(self.Children, child); self.ChildAdded:Fire(child) end
+    function model:Add(child) child.Parent=self; table.insert(self.Children,child); self.ChildAdded:Fire(child); self.DescendantAdded:Fire(child); if child.GetDescendants then for _,part in ipairs(child:GetDescendants()) do self.DescendantAdded:Fire(part) end end end
     function model:Remove(name)
         for index, child in ipairs(self.Children) do
-            if child.Name == name then table.remove(self.Children, index); child.Parent = nil; self.ChildRemoved:Fire(child); return child end
+            if child.Name == name then self.DescendantRemoving:Fire(child); table.remove(self.Children, index); child.Parent = nil; self.ChildRemoved:Fire(child); return child end
         end
     end
     local names = rig == 6 and { "HumanoidRootPart", "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }
@@ -95,9 +130,9 @@ local teammate = player("Teammate", "Blue", 15)
 local Players = { LocalPlayer = localPlayer, List = { localPlayer, enemy, teammate }, PlayerAdded = signal(), PlayerRemoving = signal() }
 function Players:GetPlayers() return table.clone(self.List) end
 localPlayer.Idled = signal()
-local RunService = { RenderStepped = signal(), Heartbeat = signal() }
+local RunService = { RenderStepped = signal(), Heartbeat = signal(), Stepped=signal() }
 local function camera()
-    local object = { CFrame = { Position = vec(0, 0, 0), RightVector=vec(1,0,0), UpVector=vec(0,1,0) }, ProjectionInputs={}, ViewportSize=vec(800,600,0), Calls = 0 }
+    local object = { CFrame = frame(vec(0,0,0)), ProjectionInputs={}, ViewportSize=vec(800,600,0), Calls = 0 }
     function object:WorldToViewportPoint(position)
         self.Calls += 1
         table.insert(self.ProjectionInputs,position)
@@ -133,9 +168,14 @@ local function uiSignal()
     event.IsUI = true
     return event
 end
-local UserInputService = { InputBegan = uiSignal(), InputChanged = uiSignal(), InputEnded = uiSignal() }
+local UserInputService = { InputBegan=uiSignal(), InputChanged=uiSignal(), InputEnded=uiSignal(), JumpRequest=uiSignal(),Keys={},TouchEnabled=false,KeyboardEnabled=true }
+function UserInputService:GetFocusedTextBox() return self.Focused end
+function UserInputService:IsKeyDown(key) return self.Keys[key]==true end
+local physicsInstances,failInstanceClass={},nil
 local function uiInstance(class)
+    if class==failInstanceClass then error("simulated instance allocation failure") end
     local object = { ClassName = class, InputBegan = uiSignal(), Activated = uiSignal(), MouseEnter = uiSignal(), MouseLeave = uiSignal() }
+    if class=="Attachment" or class=="LinearVelocity" or class=="AlignOrientation" then table.insert(physicsInstances,object) end
     function object:IsA(name) return self.ClassName == name end
     function object:Destroy() self.Destroyed = true; self.Parent = nil end
     return object
@@ -342,10 +382,17 @@ local function fileFromURL(url)
     error("Unexpected URL: " .. url)
 end
 local namecallMethod, executorCaller, hookInstallations = "ViewportPointToRay", false, 0
+local kickCalls,directHookInstallations,failKickHook=0,0,false
+local function originalKick() kickCalls=kickCalls+1; return "kick forwarded" end
+local directKick=originalKick
+function localPlayer:Kick(...) return directKick(self,...) end
 local function originalNamecall(object, ...)
+    if string.lower(namecallMethod)=="kick" then return originalKick(object,...) end
     return {Origin=object.RayOrigin or object.CFrame.Position, Direction=vec(0,0,1), Original=true}
 end
 local activeNamecall=originalNamecall
+local readonly=true
+local rawMeta=setmetatable({}, {__index=function(_,key) if key=="__namecall" then return activeNamecall end end, __newindex=function(_,key,value) assert(key=="__namecall"); activeNamecall=value end})
 local function cameraRay(object,method,...)
     namecallMethod=method
     return activeNamecall(object,...)
@@ -358,12 +405,19 @@ local function compileSource(source, name)
 end
 environment = setmetatable({
     getgenv = function() return registry end, shared = registry, workspace = world, Drawing = DrawingAPI, Instance = { new = uiInstance },
-    Enum = { RaycastFilterType={Exclude="Exclude"}, HumanoidRigType = { R6 = 6, R15 = 15 }, KeyCode = { RightShift = { Name = "RightShift", Kind = "EnumItem" } }, UserInputType = { MouseButton1 = "Mouse1", Touch = "Touch", MouseMovement = "Move" }, Font = { BuilderSansBold = "Bold" } },
-    Vector3 = { new = vec }, Vector2 = { new = function(x,y) return vec(x,y,0) end },
+    Enum = { Material={Air="Air",Ground="Ground"}, HumanoidStateType={Running="Running",Jumping="Jumping",Freefall="Freefall",Landed="Landed",Physics="Physics",PlatformStanding="PlatformStanding"}, ActuatorRelativeTo={World="World"}, VelocityConstraintMode={Vector="Vector"}, OrientationAlignmentMode={OneAttachment="OneAttachment"}, RaycastFilterType={Exclude="Exclude"}, HumanoidRigType = { R6 = 6, R15 = 15 }, KeyCode = { W="W",A="A",S="S",D="D",Space="Space",LeftControl="Control",ButtonA="ButtonA",RightShift = { Name = "RightShift", Kind = "EnumItem" } }, UserInputType = { MouseButton1 = "Mouse1", Touch = "Touch", MouseMovement = "Move" }, Font = { BuilderSansBold = "Bold" } },
+    Vector3 = { new=vec, zero=vec(0,0,0), yAxis=vec(0,1,0) },
+    CFrame={new=function(x,y,z) return frame(type(x)=="table" and x or vec(x or 0,y or 0,z or 0)) end,identity=frame()}, Vector2 = { new = function(x,y) return vec(x,y,0) end },
     Ray = {new=function(origin,direction) return {Origin=origin,Direction=direction} end}, RaycastParams={new=function() return {} end},
     hookmetamethod=function(_,method,callback)
         assert(method=="__namecall"); hookInstallations+=1; local previous=activeNamecall; activeNamecall=callback; return previous
     end,
+    hookfunction=function(target,replacement)
+        assert(target==localPlayer.Kick)
+        if failKickHook then error("simulated hookfunction failure") end
+        directHookInstallations=directHookInstallations+1; local previous=directKick; directKick=replacement; return previous
+    end,
+    getrawmetatable=function() return rawMeta end, isreadonly=function() return readonly end, setreadonly=function(_,value) readonly=value end,
     getnamecallmethod=function() return namecallMethod end, checkcaller=function() return executorCaller end, newcclosure=function(callback) return callback end,
     Color3 = { new = color, fromRGB = function(r,g,b) return color(r/255,g/255,b/255) end,
         fromHex = function(hex) return color(tonumber(hex:sub(1,2),16)/255,tonumber(hex:sub(3,4),16)/255,tonumber(hex:sub(5,6),16)/255) end },

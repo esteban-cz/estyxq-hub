@@ -203,7 +203,7 @@ local function createMenu()
 
     local Window = NextUI:CreateWindow({
         Title = CONFIG.Title,
-        SubTitle = CONFIG.Subtitle .. "  /  v" .. CONFIG.ScriptVersion,
+        SubTitle = CONFIG.ScriptName .. "  /  v" .. CONFIG.ScriptVersion,
         Size = Vector2.new(880, 620),
         MinSize = Vector2.new(650, 460),
         TabWidth = 185,
@@ -245,7 +245,8 @@ local function createMenu()
         Sections = {},
         Controls = {
             Game = {},
-            Shared = {}
+            Shared = {},
+            Overview = {}
         },
         Game = gameModule,
         State = {
@@ -326,7 +327,8 @@ local function createMenu()
     end
     Menu.Connect = connect
 
-    local featureSections = {}
+    local featureSections, overviewFeatures = {}, {}
+    local registerQuickControl
 
     -- This pill belongs to NextUI's GUI, so unloading also removes it.
     local pill = Instance.new("TextButton")
@@ -441,6 +443,7 @@ local function createMenu()
             end
             Menu.State[area][tab.Title], Menu.Controls[area][tab.Title], Menu.Sections[tab.Title] = {}, {}, {}
             for index, section in ipairs(tab.Sections) do
+                local feature = {Area = area, TabTitle = tab.Title, SectionTitle = section.Title}
                 local boundary = Runtime.newSection({
                     IsActive = Menu.IsActive,
                     Library = NextUI,
@@ -450,21 +453,29 @@ local function createMenu()
                     OnError = function(message)
                         warn("[estyxq Hub / " .. tab.Title .. " / " .. section.Title .. "] " .. message)
                     end,
+                    OnReady = function(definition)
+                        feature.Overview = definition.Overview
+                        registerQuickControl(feature)
+                    end,
                     CreateCard = function(definition)
+                        local loaded = definition ~= nil
+                        local options = definition or {}
                         local card = page:AddSection({
                             Title = section.Title,
-                            Icon = definition.Icon or "sliders-horizontal",
-                            Side = definition.Side or (index % 2 == 1 and "Left" or "Right"),
-                            Collapsible = definition.Collapsible,
-                            Collapsed = definition.Collapsed
+                            Icon = options.Icon or "sliders-horizontal",
+                            Side = options.Side or (index % 2 == 1 and "Left" or "Right"),
+                            Collapsible = loaded and options.Collapsible ~= false,
+                            Collapsed = loaded and options.Collapsible ~= false and options.Collapsed ~= false
                         })
                         card.Frame.LayoutOrder = index
+                        feature.Card = card
                         return card
                     end,
                     Context = function(scope, card)
                         local state, controls = {}, {}
                         Menu.State[area][tab.Title][section.Title], Menu.Controls[area][tab.Title][section.Title] =
                             state, controls
+                        feature.State, feature.SectionControls = state, controls
                         return {
                             Hub = Menu,
                             Library = NextUI,
@@ -502,6 +513,8 @@ local function createMenu()
                 Menu.Sections[tab.Title][section.Title] = boundary
                 Menu.AddCleanup(boundary.Destroy)
                 table.insert(featureSections, boundary)
+                feature.Boundary = boundary
+                table.insert(overviewFeatures, feature)
             end
         end
     end
@@ -515,63 +528,78 @@ local function createMenu()
     Menu.Tabs.Settings = Window:AddTab("Settings", "settings-2")
     local Overview, Settings = Menu.Tabs.Overview, Menu.Tabs.Settings
 
-    local welcome = Overview:AddSection({
-        Title = "Welcome home",
-        Icon = "home",
+    local sessionCard = Overview:AddSection({
+        Title = "Session",
+        Icon = "server",
         Side = "Full"
     })
-    welcome:AddTitle(CONFIG.Title)
-    welcome:AddLabel(CONFIG.Subtitle)
-    welcome:AddParagraph({
-        Title = CONFIG.ScriptName,
-        Content = "Version " .. CONFIG.ScriptVersion .. " / All your tools, one familiar space."
+    sessionCard:AddParagraph({
+        Title = gameModule and gameModule.Name or CONFIG.ScriptName,
+        Content = "Script version " .. CONFIG.ScriptVersion
     })
-    local actions = Overview:AddSection({
-        Title = "Start here",
-        Icon = "compass",
-        Side = "Left"
-    })
-    if Menu.GameTab then
-        actions:AddButton({
-            Title = "Open game tools",
-            Description = CONFIG.ScriptName,
-            Callback = function()
-                Menu.GameTab:Select()
-            end
-        })
 
-    end
-    if Menu.Tabs.Misc then
-        actions:AddButton({
-            Title = "Open Misc",
-            Callback = function()
-                Menu.Tabs.Misc:Select()
+    local quickControls = Overview:AddSection({
+        Title = "Quick controls",
+        Icon = "gamepad",
+        Side = "Full"
+    })
+    registerQuickControl = function(feature)
+        if feature.Control or feature.Overview == false or not isCurrentSession() then return end
+        feature.Key = feature.Area .. "/" .. feature.TabTitle .. "/" .. feature.SectionTitle
+        local sectionToggle = feature.SectionControls and feature.SectionControls.Enabled
+        if not sectionToggle or type(sectionToggle.Set) ~= "function" or type(feature.State.Enabled) ~= "boolean" then
+            feature.Control = quickControls:AddButton({
+                Title = "Open " .. feature.SectionTitle,
+                Description = feature.TabTitle .. " / Actions and settings",
+                Callback = function()
+                    if not isCurrentSession() then return end
+                    Menu.Tabs[feature.TabTitle]:Select()
+                    if feature.Card and type(feature.Card.Expand) == "function" then feature.Card:Expand() end
+                end
+            })
+            Menu.Controls.Overview[feature.Key] = feature.Control
+            return
+        end
+        feature.Value = feature.State.Enabled == true
+        local quickToggle
+        quickToggle = quickControls:AddToggle({
+            Title = feature.TabTitle .. " / " .. feature.SectionTitle,
+            Style = "Switch", Default = feature.Value,
+            Callback = function(value)
+                if value == feature.Value then return end
+                local target = feature.SectionControls and feature.SectionControls.Enabled
+                if feature.Boundary.Status ~= "Ready" or not target or type(target.Set) ~= "function" then
+                    feature.Value = false
+                    quickToggle:Set(false)
+                    Menu.Notify("Feature unavailable", "Open " .. feature.SectionTitle .. " to retry loading it.", "Warning")
+                    return
+                end
+                local changed, message = pcall(target.Set, target, value == true)
+                feature.Value = feature.Boundary.Status == "Ready" and feature.State.Enabled == true
+                quickToggle:Set(feature.Value)
+                if not changed then Menu.Notify("Feature unavailable", tostring(message), "Error") end
             end
         })
+        feature.Control, feature.Toggle = quickToggle, quickToggle
+        Menu.Controls.Overview[feature.Key] = quickToggle
     end
-    actions:AddButton({
-        Title = "Make it yours",
-        Callback = function()
-            Settings:Select()
-        end
-    })
-    local essentials = Overview:AddSection({
-        Title = "Within reach",
-        Icon = "keyboard",
-        Side = "Right"
-    })
-    local shortcut = essentials:AddParagraph({
-        Title = "Menu shortcut",
-        Content = "Press " .. CONFIG.ToggleKey.Name .. " to show or hide the hub."
-    })
-    essentials:AddParagraph({
-        Title = "Small when you need it",
-        Content = "Minimize to the estyxq Hub pill. Drag it anywhere, then tap to return."
-    })
-    essentials:AddParagraph({
-        Title = "Your tools stay with you",
-        Content = "Minimizing keeps enabled features active. Closing or reloading cleans them up."
-    })
+    if #overviewFeatures > 0 then
+        local elapsed = 0
+        connect(game:GetService("RunService").Heartbeat, function(deltaTime)
+            elapsed = elapsed + deltaTime
+            if elapsed < 0.5 then return end
+            elapsed = 0
+            for _, feature in ipairs(overviewFeatures) do
+                if feature.Toggle then
+                    local enabled = feature.Boundary.Status == "Ready" and feature.State ~= nil and feature.State.Enabled == true
+                    if enabled ~= feature.Value then
+                        feature.Value = enabled
+                        feature.Toggle:Set(enabled)
+                    end
+                end
+            end
+        end)
+    end
 
     local themeCard = Settings:AddSection({
         Title = "Appearance",
@@ -624,8 +652,6 @@ local function createMenu()
         MenuKey = true,
         ChangedCallback = function(key)
             Menu.State.ToggleKey = key
-            local label = typeof(key) == "EnumItem" and key.Name or tostring(key)
-            shortcut:Set("Menu shortcut", "Press " .. label .. " to show or hide the hub.")
         end
     })
     local about = Settings:AddSection({

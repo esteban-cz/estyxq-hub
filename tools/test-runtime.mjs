@@ -5,6 +5,10 @@ import { root, luau, run } from './luau.mjs';
 const files = ['main.luau','loader.luau','dev-loader.luau','menu.luau','catalog.luau','core/runtime.luau',
     'shared/misc-[Misc]/anti-afk-[Anti-AFK].luau',
     'shared/misc-[Misc]/anti-kick-[Anti-Kick].luau',
+    'shared/misc-[Misc]/position-tools-[Position Tools].luau',
+    'shared/movement-[Movement]/fly-[Flight].luau',
+    'shared/movement-[Movement]/noclip-[Noclip].luau',
+    'shared/movement-[Movement]/jump-[Jump].luau',
     'urban-reloaded-[84448037861644]/combat-[Combat]/silent-aim-[Silent Aim].luau',
     'urban-reloaded-[84448037861644]/visual-[Visuals]/esp-[ESP].luau'];
 const sources = Object.fromEntries(await Promise.all(files.map(async file => [file, (await readFile(path.join(root,'src',file),'utf8')).replaceAll('\r\n','\n')])));
@@ -15,7 +19,7 @@ function quote(value) {
 }
 const header = 'local sources = {\n' + Object.entries(sources).map(([file,source]) => `[ ${quote(file)} ] = ${quote(source)},`).join('\n') + '\n}\n';
 const mock = await readFile(path.join(root,'tests/roblox-mock.luau'),'utf8');
-const tests = (await Promise.all(['anti-afk','silent-aim','esp','runtime'].map(name=>readFile(path.join(root,'tests',name+'.luau'),'utf8')))).join('\n');
+const tests = (await Promise.all(['anti-afk','silent-aim','esp','anti-kick','movement','runtime'].map(name=>readFile(path.join(root,'tests',name+'.luau'),'utf8')))).join('\n');
 const temp = await mkdtemp(path.join(tmpdir(), 'estyxq-tests-'));
 try {
     const entry = path.join(temp,'run.luau');

@@ -11,6 +11,6 @@ async function files(dir) {
     }
     return result;
 }
-const sources = await files(root);
+const sources = (await Promise.all(['src','tests'].map(dir => files(path.join(root,dir))))).flat();
 for (const file of sources) run(luau('luau-compile'), ['--null', file]);
 console.log('Luau syntax OK: ' + sources.length + ' files.');

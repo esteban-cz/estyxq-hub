@@ -64,6 +64,7 @@ local function boundary(hub) return hub.Sections.Combat["Silent Aim"] end
 local function fallback(hub)
     for _, card in ipairs(hub.Tabs.Combat.Sections) do
         if card.Options.Title == "Silent Aim" then
+            assert(not card.Options.Collapsed and not card.Options.Collapsible, "Error cards must keep retry visible")
             for _, control in ipairs(card.Elements) do
                 if control.Options.Title == "Retry section" then return control end
             end
@@ -173,6 +174,9 @@ pauses[sectionFile] = true
 do
     local hub = execute(loaderSource)
     assert(boundary(hub).Status == "Loading")
+    for _, card in ipairs(hub.Tabs.Combat.Sections) do
+        if card.Options.Title == "Silent Aim" then assert(not card.Options.Collapsed and not card.Options.Collapsible) end
+    end
     assert(not boundary(hub).Retry(), "Ignore duplicate retries during a pending attempt")
     checkOtherSections(hub)
     hub.Controls.Shared.Misc["Anti-AFK"].Enabled:Set(true)
@@ -359,12 +363,57 @@ do
     environment.game.PlaceId, environment.game.GameId = 84448037861644,10769552054
     local hub=execute(loaderSource)
     assert(hub.Sections.Combat["Silent Aim"].Status=="Ready" and hub.Sections.Misc["Anti-AFK"].Status=="Ready")
+    local sessionCard, quickCard
+    for _, card in ipairs(hub.Tabs.Overview.Sections) do
+        assert(card.Options.Title ~= "Welcome home" and card.Options.Title ~= "Start here")
+        if card.Options.Title == "Session" then sessionCard = card end
+        if card.Options.Title == "Quick controls" then quickCard = card end
+    end
+    assert(sessionCard and quickCard)
+    assert(quickCard.Options.Icon == "gamepad", "Quick controls must use an available icon")
+    local identity = sessionCard.Elements[1].Options
+    assert(identity.Title == "Urban Reload" and identity.Content == "Script version " .. gameVersion)
+    assert(hub.Window.Options.SubTitle == "Urban Reload  /  v" .. gameVersion)
     local combat=hub.Controls.Game.Combat["Silent Aim"]
     local misc=hub.Controls.Shared.Misc["Anti-AFK"]
-    combat.Enabled:Set(true)
+    local position=hub.Controls.Shared.Misc["Position Tools"]
+    local quickAim=hub.Controls.Overview["Game/Combat/Silent Aim"]
+    local quickAFK=hub.Controls.Overview["Shared/Misc/Anti-AFK"]
+    assert(quickAim and quickAFK and position and not quickAim:Get() and not quickAFK:Get())
+    assert(hub.Sections.Misc["Position Tools"].Status == "Ready")
+    local positionQuick=hub.Controls.Overview["Shared/Misc/Position Tools"]
+    assert(positionQuick.Options.Title == "Open Position Tools" and positionQuick.Options.Default == nil)
+    positionQuick.Options.Callback()
+    assert(hub.Tabs.Misc.Selected)
+    for _, card in ipairs(hub.Tabs.Misc.Sections) do
+        assert(card.Options.Collapsible and card.Options.Collapsed, card.Options.Title .. " should start collapsed")
+    end
+    for _, card in ipairs(hub.Tabs.Combat.Sections) do
+        assert(card.Options.Collapsible and card.Options.Collapsed, card.Options.Title .. " should start collapsed")
+    end
+    local root = localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    root.Position = vec(12.9, -4.2, 8.8)
+    RunService.Heartbeat:Fire(0.2)
+    assert(position.CurrentPosition.Options.Content == "12, -5, 8")
+    position.Save.Options.Callback()
+    assert(position.SavedPosition.Options.Content == "12, -5, 8")
+    local copiedPosition
+    environment.setclipboard = function(value) copiedPosition = value end
+    position.Copy.Options.Callback()
+    environment.setclipboard = nil
+    assert(copiedPosition == "12, -5, 8")
+    root.Position = vec(0, 0, 0)
+    quickAim:Set(true)
+    quickAFK:Set(true)
     misc.Enabled:Set(true)
     local silent,afk=registry["estyxq-hub.UrbanReload.SilentAim"],registry["estyxq-hub.AntiAFK"]
     assert(silent.Enabled and afk.Enabled and drawingCount()==1)
+    misc.Enabled:Set(false)
+    RunService.Heartbeat:Fire(0.5)
+    assert(not quickAFK:Get())
+    misc.Enabled:Set(true)
+    RunService.Heartbeat:Fire(0.5)
+    assert(quickAFK:Get())
     combat.FOV:Set(240)
     combat.Part:Set("HumanoidRootPart")
     assert(silent.Settings.FOV==240 and silent._circle.Radius==240 and silent.Settings.Part=="HumanoidRootPart")
@@ -443,6 +492,68 @@ do
 end
 print("PASS: Visuals ESP controls, presets/reset, guarded inline pages, concurrent features and retry/reload cleanup")
 
+
+-- Shared Movement and Position Tools work without a game-specific module.
+do
+    environment.game.PlaceId,environment.game.GameId=0,0
+    local hub=execute(loaderSource)
+    assert(hub.Tabs.Movement and hub.Tabs.Misc and not hub.Tabs.Combat)
+    for _,name in ipairs({"Flight","Noclip","Jump"}) do
+        assert(hub.Sections.Movement[name].Status=="Ready",hub.Sections.Movement[name].Error)
+        assert(not hub.State.Shared.Movement[name].Enabled)
+    end
+    local position=hub.Controls.Shared.Misc["Position Tools"]
+    local state=hub.State.Shared.Misc["Position Tools"]
+    local root=localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local hum=localPlayer.Character:FindFirstChildOfClass("Humanoid")
+    local original=root.CFrame
+    position.Teleport.Options.Callback()
+    assert(root.CFrame==original and notifications[#notifications].Title=="No saved position")
+    root.CFrame=frame(vec(14,7,90),vec(0,0,1),vec(0,1,0),vec(-1,0,0))
+    position.Save.Options.Callback()
+    local saved=state.SavedCFrame
+    root.Position=vec(0,0,0)
+    root.AssemblyLinearVelocity=vec(10,2,5)
+    position.Teleport.Options.Callback()
+    assert(root.Position.X==14 and root.Position.Y==10 and root.Position.Z==90)
+    assert(root.CFrame.RightVector==saved.RightVector and root.AssemblyLinearVelocity.Magnitude==0)
+    position.HeightOffset:Set(0)
+    position.Teleport.Options.Callback()
+    assert(root.Position.Y==7)
+    position.Clear.Options.Callback()
+    assert(state.SavedCFrame==nil and position.SavedPosition.Options.Content=="None")
+    position.Reset.Options.Callback()
+    assert(hum.Health==0)
+    hum.Health=100; hum:ChangeState(environment.Enum.HumanoidStateType.Running)
+    local oldCollision,oldAuto,oldStand=root.CanCollide,hum.AutoRotate,hum.PlatformStand
+    local quickFlight=hub.Controls.Overview["Shared/Movement/Flight"]
+    quickFlight:Set(true)
+    hub.Controls.Overview["Shared/Movement/Noclip"]:Set(true)
+    hub.Controls.Overview["Shared/Movement/Jump"]:Set(true)
+    RunService.Stepped:Fire(testTime,0.02)
+    assert(hub.State.Shared.Movement.Flight.Enabled and hub.State.Shared.Movement.Noclip.Enabled and hub.State.Shared.Movement.Jump.Enabled)
+    assert(not root.CanCollide and hum.PlatformStand)
+    hub.Window:Close()
+    assert(hub.Pill.Visible and hub.State.Shared.Movement.Flight.Enabled)
+    local fresh=execute(loaderSource)
+    assert(hub.Window.Destroyed and root.CanCollide==oldCollision and hum.AutoRotate==oldAuto and hum.PlatformStand==oldStand)
+    for _,object in ipairs(physicsInstances) do assert(object.Destroyed) end
+    for _,name in ipairs({"Flight","Noclip","Jump"}) do assert(not fresh.State.Shared.Movement[name].Enabled) end
+    fresh.Controls.Shared.Movement.Flight.Enabled:Set(true)
+    fresh.Controls.Shared.Movement.Flight.Speed:Set(0/0)
+    flushTasks()
+    assert(fresh.Sections.Movement.Flight.Status=="Error")
+    for _,card in ipairs(fresh.Tabs.Movement.Sections) do
+        if card.Options.Title=="Flight" then assert(not card.Options.Collapsible and not card.Options.Collapsed) end
+    end
+    assert(fresh.Sections.Movement.Noclip.Status=="Ready" and fresh.Sections.Misc["Position Tools"].Status=="Ready")
+    fresh.Destroy(); noLeaks()
+    for _,object in ipairs(physicsInstances) do assert(object.Destroyed) end
+    assert(registry["estyxq-hub.AntiKick.Hooks"].Owner==nil)
+    root.CFrame=frame(vec(0,0,0))
+end
+print("PASS: universal Movement, overview actions/toggles, saved position/teleport/reset, concurrent cleanup and visible retry cards")
+
 -- Run the actual local entry point against executor-style workspace files.
 do
     local remoteRequests = #requests
@@ -456,6 +567,15 @@ do
     end
     local hub=execute(sources["dev-loader.luau"])
     assert(hub.Tabs.Misc and not hub.Tabs.Combat)
+    local fallbackIdentity
+    for _, card in ipairs(hub.Tabs.Overview.Sections) do
+        if card.Options.Title == "Session" then
+            fallbackIdentity = card.Elements[1].Options
+        end
+    end
+    assert(fallbackIdentity and fallbackIdentity.Title == "Universal"
+        and fallbackIdentity.Content == "Script version 1.0.0")
+    assert(hub.Window.Options.SubTitle == "Universal  /  v1.0.0")
     assert(#requests==remoteRequests and table.find(reads,"catalog.luau") and table.find(reads,"shared/misc-[Misc]/anti-afk-[Anti-AFK].luau"))
     hub.Controls.Shared.Misc["Anti-AFK"].Enabled:Set(true)
     assert(registry["estyxq-hub.AntiAFK"].Enabled)

@@ -140,7 +140,7 @@ function Runtime.newSection(options)
     end
     local function render(definition)
         clearCard()
-        card = options.CreateCard(definition or {})
+        card = options.CreateCard(definition)
         return card
     end
 
@@ -176,7 +176,10 @@ function Runtime.newSection(options)
             local context = options.Context(current, view)
             local cleanup = definition.Mount(context)
             if cleanup ~= nil then current.AddCleanup(cleanup) end
-            if current.IsActive() then section.Status = "Ready" end
+            if current.IsActive() then
+                section.Status = "Ready"
+                if options.OnReady then options.OnReady(definition) end
+            end
         end)
         return true
     end

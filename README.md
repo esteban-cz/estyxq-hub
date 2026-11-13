@@ -16,6 +16,13 @@ src/
     misc-[Misc]/
       tab.json
       anti-afk-[Anti-AFK].luau      # Controller + shared Misc section
+      anti-kick-[Anti-Kick].luau    # Client-side kick-call toggle
+      position-tools-[Position Tools].luau # Coordinates, save/copy, teleport, and reset
+    movement-[Movement]/
+      tab.json
+      fly-[Flight].luau             # Flight modes, speed, and smoothing
+      noclip-[Noclip].luau          # Owned collision changes
+      jump-[Jump].luau              # Always / Multi / Hold jump modes
   urban-reloaded-[84448037861644]/
     game.json
     combat-[Combat]/
@@ -24,13 +31,12 @@ src/
     visual-[Visuals]/
       tab.json
       esp-[ESP].luau                # Controller + Urban Reload Visuals section
-  unused-scripts/                   # Preserved Luau sources; never loaded
 README.md                           # Project documentation stays at the root
 tests/                              # Tests stay at the root
 tools/                              # Build and validation tools stay at the root
 ```
 
-`main.luau` has no built-in ESP, Anti-AFK, or game targeting code. Shared and game sections use the same loading, retry, and cleanup API. The current menu has Overview, shared Misc, Settings, and Combat/Visuals when Urban Reload matches. All features start disabled.
+`main.luau` has no built-in ESP, Anti-AFK, or game targeting code. Shared and game sections use the same loading, retry, and cleanup API. Feature cards are collapsible and start folded; loading and retry cards remain visible. Overview shows the selected game or loaded script, its version, and quick switches for toggleable sections. Action-only sections get navigation buttons. Controls appear after their section mounts successfully; unavailable sections cannot be enabled from Overview. Feature settings remain in their specific tabs. The menu also has shared Misc and Movement, Settings, and Combat/Visuals when Urban Reload matches.
 
 ## Run from GitHub
 
@@ -60,7 +66,7 @@ loadstring(readfile("estyxq-hub/src/dev-loader.luau"))()
 For the first Urban Reload smoke test:
 
 1. Open the place `84448037861644` and launch the local loader.
-2. Confirm **Combat / Silent Aim**, **Visuals / ESP**, **Misc / Anti-AFK**, and **Settings** appear. Confirm features are off.
+2. Confirm **Combat / Silent Aim**, **Visuals / ESP**, **Movement**, **Misc**, and **Settings** appear. Game and movement features start off; Anti-Kick starts on when supported.
 3. Enable Silent Aim and verify the FOV circle; adjust its radius, color, and visibility. Check targeting with the game's weapons.
 4. Check team filtering, wall filtering, aim part, distance, and hit chance against the actual game. In Visuals, enable ESP and check upright head rings, flat ground rings, names, distance, and health bars. Try the presets, optional boxes, and a respawn.
 5. Enable Anti-AFK and use **Test keepalive**. Minimize and reopen the hub; enabled features should stay active.
@@ -84,9 +90,27 @@ Head rings stand upright in a camera-facing plane; ground rings remain horizonta
 
 ESP needs Drawing.Line. If Drawing.Text is missing, it reports the limitation once and keeps the supported visuals running. Disabling, section retry, reload, or unload releases all owned drawings and listeners. Ring detail and update rate can be lowered independently. Actual executor rendering still needs a live check.
 
-The unchanged universal ESP reference remains under `src/unused-scripts/esp-base.luau`. The active game section no longer registers the old universal ESP globals.
+The active game ESP section uses its own controller and does not register the old universal ESP globals.
 
 The original ESP's reported editor errors were on Luau compound assignments and `continue`, which compile in Luau but can be flagged by a standard Lua parser. The active ESP uses ordinary assignments and branches instead.
+
+## Shared tools and Movement
+
+The shared tools adapt AnyCat.Dev's standalone controls into owned hub sections. The standalone GUI and archived source copies have been removed after integration. Syntax checks cover `src/` and `tests/`.
+
+**Movement** is universal and available in unsupported games as well as Urban Reload:
+
+- **Flight**: Velocity and Hybrid modes, speed 10–300, and Low/Medium/High smoothing. Use WASD, Space to rise, and Ctrl to descend. Horizontal character movement can also supply direction. Typing pauses flight input. Flight stops on death or a character change. Disable, retry, or unload destroys its constraints and attachment, restores the humanoid flags/state it changed, and clears flight momentum. Hybrid mode respects external saved-position teleports.
+- **Noclip**: follows the current character and newly added parts while enabled. Each part's original collision value is restored when it leaves the character, the character changes, or the feature stops. It starts disabled.
+- **Jump**: Always allows repeated jump presses; Multi limits extra airborne jumps and resets the allowance on landing; Hold keeps upward movement while jump is held. Extra-jump count and upward speed are configurable. Typing and flight pause jump modifications. It starts disabled.
+
+Flight uses owned [LinearVelocity](https://create.roblox.com/docs/reference/engine/classes/LinearVelocity) and [AlignOrientation](https://create.roblox.com/docs/reference/engine/classes/AlignOrientation) constraints. All movement is client-side; individual games can correct movement or apply their own rules. Live physics behavior must be checked in the target game.
+
+**Misc / Position Tools** displays coordinates, saves one position and orientation for this session, copies coordinates, teleports to the saved pose with an adjustable height offset, clears the saved pose, and offers a held Reset character button. The default teleport offset is three studs, matching the reference tool. Saved poses are cleared on section retry/unload. It has an Open button on Overview rather than an on/off switch.
+
+**Anti-Kick** preserves the current default of enabling on startup when supported. Disabling or unloading clears the active hook owner. Reloads and retries reuse one dispatcher pair, and partial installation retries do not add another namecall hook. The inert dispatchers are retained so another script's later hooks are preserved. Legacy wrappers from the previous implementation cannot be removed retroactively; rejoin once before testing hook lifetime. This only intercepts client Kick calls and cannot prevent server disconnections.
+
+Suggested smoke test: enable Flight, change its speed/mode, type into a textbox, and disable it; verify normal humanoid movement returns. Enable Noclip, add/equip an accessory, respawn, and disable it; verify collisions return. Try each jump mode, land to refill Multi jumps, and verify disabling removes input effects. Save and teleport to a position, then rerun/unload the loader while movement is active and verify no physics objects or active movement remain.
 
 ## Adding games, shared tabs, and sections
 
@@ -106,7 +130,7 @@ The folder's bracketed number is a PlaceId. Optional `PlaceIds` adds exact place
 
 Within a game folder, `readable-name-[Tab title]/` becomes a tab. Inside it, `readable-name-[Section title].luau` becomes a section. Optional `tab.json` sets its icon, for example `{"Icon":"swords"}`.
 
-Use the same tab/section naming under `src/shared/` for tools available in every game. Overview and Settings are reserved titles; a game's tab titles must also avoid shared tab titles. Unmatched helper files and everything under `src/unused-scripts/` are ignored by discovery.
+Use the same tab/section naming under `src/shared/` for tools available in every game. Overview and Settings are reserved titles; a game's tab titles must also avoid shared tab titles. Unmatched helper files are ignored by discovery.
 
 After adding, renaming, or changing metadata, run `npm run build` and include the updated `src/catalog.luau` with the sources. Implementation-only edits at an existing section path do not require a rebuild.
 
@@ -150,6 +174,8 @@ return {
 
 Mount may return a cleanup function, register several, or do both. Cleanup should finish without yielding. Independent hooks, listeners, or tasks must be explicitly registered; the framework cannot infer their lifetime. Native calls through Tab, Window, or Library do not automatically gain section ownership.
 
+Set `Overview = false` on a section definition to omit it from quick controls. Otherwise a boolean `State.Enabled` and `Controls.Enabled:Set(...)` make it toggleable; action-only sections get an Open button. Loading/error cards are always expanded, while successfully mounted cards keep their configured collapse defaults.
+
 Section download, compile, evaluation, mount, and guarded callback errors affect that section. Its resources are released, the console shows details, and its card offers Retry. A retry refetches the source and creates fresh State/Controls. Other sections keep working.
 
 Inspect `Hub.Sections[tabTitle][sectionTitle]` for Status, Error, Attempts, Retry(), and Destroy(). State and controls live under `Hub.State.Game` / `Hub.Controls.Game` or `Hub.State.Shared` / `Hub.Controls.Shared`.
@@ -172,6 +198,6 @@ Setup downloads the pinned official [Luau 0.746 CLI](https://github.com/luau-lan
 - `npm test`: catalog validation, controller tests, section lifetimes, reloads, and local/remote loading.
 - `npm run check`: ensure the catalog is current, compile active Luau sources, and run tests. Archives are excluded.
 
-GitHub Actions runs these checks on pushes and pull requests. Runtime tests use Roblox/NextUI doubles; they do not verify live rendering, weapon compatibility, or executor behavior.
+GitHub Actions runs these checks on pushes and pull requests. Runtime tests use Roblox/NextUI doubles and cover shared movement, hook ownership, character restoration, and teleport/reset actions. They do not verify live rendering, physics replication, weapon compatibility, or executor behavior.
 
 The NextUI fork retains its MIT header. [NextUI documentation](https://diser.me/nextui/).

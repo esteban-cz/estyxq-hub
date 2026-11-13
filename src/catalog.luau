@@ -14,6 +14,28 @@ return {
                     Title = "Anti-Kick",
                     File = "shared/misc-[Misc]/anti-kick-[Anti-Kick].luau",
                 },
+                {
+                    Title = "Position Tools",
+                    File = "shared/misc-[Misc]/position-tools-[Position Tools].luau",
+                },
+            },
+        },
+        {
+            Title = "Movement",
+            Icon = "move",
+            Sections = {
+                {
+                    Title = "Flight",
+                    File = "shared/movement-[Movement]/fly-[Flight].luau",
+                },
+                {
+                    Title = "Jump",
+                    File = "shared/movement-[Movement]/jump-[Jump].luau",
+                },
+                {
+                    Title = "Noclip",
+                    File = "shared/movement-[Movement]/noclip-[Noclip].luau",
+                },
             },
         },
     },
